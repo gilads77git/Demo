@@ -682,15 +682,14 @@ function endSession() {
   isListening = false;
   clearTimeout(conversationLoopTimeout);
   clearTimeout(botResponseTimeout);
-  showAiAnalyzing(false);
-  if (recognition) { try { recognition.stop(); } catch(e) {} }
+  if (recognition) { try { userStoppedManually = true; recognition.stop(); } catch(e) {} }
   window.speechSynthesis.cancel();
+  stopSynthKeepAlive();
   setToggleIdle();
   setWaveState('idle');
   statusText.textContent = '';
   statusText.style.color = '#7c7c9a';
   hideSpeakerIcon();
-  // Reset chat display
   const textEl = document.getElementById('chatSpeakerText');
   if (textEl) { textEl.textContent = ''; }
 }
@@ -698,67 +697,49 @@ function endSession() {
 // ===== CONVERSATION LOOP =====
 function startConversationLoop() {
   if (!sessionActive) return;
-  // Simulate user speaking after a short moment
-  conversationLoopTimeout = setTimeout(() => {
+  setTimeout(() => {
     if (!sessionActive) return;
-    triggerUserInput();
-  }, 1200);
+    triggerBotResponse(true); // true = play intro sentence
+  }, 500);
 }
 
 function triggerUserInput() {
-  if (!sessionActive) return;
-
-  // If real speech recognition is active, don't override it
-  if (isListening) return;
-
-  setWaveState('listening');
-  statusText.textContent = '● YOU — speaking';
-  statusText.style.color = '#f472b6';
-
-  const avatar = document.getElementById('chatSpeakerAvatar');
-  const nameEl = document.getElementById('chatSpeakerName');
-  const textEl = document.getElementById('chatSpeakerText');
-  if (avatar) { avatar.style.background = '#1e1e2e'; avatar.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f472b6" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>'; }
-  if (nameEl) nameEl.textContent = 'YOU · LIVE';
-
-  // Animate placeholder dots to show listening
-  let dotCount = 0;
-  const dotInterval = setInterval(() => {
-    if (!sessionActive || isListening) { clearInterval(dotInterval); return; }
-    dotCount = (dotCount + 1) % 4;
-    if (textEl && !isListening) textEl.textContent = '●'.repeat(dotCount + 1);
-    textEl.style.fontStyle = 'italic';
-    textEl.style.color = '#f472b6';
-  }, 400);
-
-  // After 2.5s simulate pause → bot responds
-  conversationLoopTimeout = setTimeout(() => {
-    clearInterval(dotInterval);
-    if (!sessionActive) return;
-    if (isListening) return; // real mic is active, let it handle response
-    triggerAnalyzing();
-  }, 2500);
+  // No-op — user speaks via real mic
 }
 
 function triggerAnalyzing() {
   if (!sessionActive) return;
-
   setWaveState('analyzing');
   statusText.textContent = '';
-
   const textEl = document.getElementById('chatSpeakerText');
   if (textEl) { textEl.textContent = ''; textEl.style.fontStyle = 'normal'; }
-
   conversationLoopTimeout = setTimeout(() => {
     if (!sessionActive) return;
-    triggerBotResponse();
+    triggerBotResponse(false); // false = contextual response
   }, 1500);
 }
 
-function triggerBotResponse() {
+function triggerBotResponse(isIntro) {
   if (!sessionActive) return;
 
-  const resp = BOT_RESPONSE_SENTENCE;
+  const lang = getActiveLang();
+  let resp;
+
+  if (isIntro) {
+    resp = BOT_RESPONSE_SENTENCE;
+  } else {
+    // Contextual response pool based on selected language
+    const pool = {
+      EN: ["I completely understand your frustration. Your flight cancellation has been noted and I'm processing your refund request right now.", "I sincerely apologize for the inconvenience. Let me escalate this to our priority team immediately.", "I hear you, and I want to make this right. A full refund will be processed within 3 to 5 business days.", "Thank you for your patience. I've flagged your case as urgent and a manager will contact you within the hour."],
+      ES: ["Entiendo perfectamente su frustración. Estoy procesando su solicitud de reembolso ahora mismo.", "Le pido disculpas sinceras. Permítame escalar esto a nuestro equipo prioritario de inmediato.", "Le escucho y quiero resolver esto. El reembolso completo se procesará en 3 a 5 días hábiles."],
+      FR: ["Je comprends parfaitement votre frustration. Je traite votre demande de remboursement maintenant.", "Je vous présente mes sincères excuses. Permettez-moi d'escalader cela immédiatement.", "Je vous entends et je veux arranger cela. Le remboursement sera traité sous 3 à 5 jours ouvrables."],
+      JP: ["ご不便をおかけして申し訳ございません。払い戻しのリクエストを今すぐ処理しています。", "誠に申し訳ございません。優先チームにすぐにエスカレートさせていただきます。"],
+      DE: ["Ich verstehe Ihre Frustration vollkommen. Ich bearbeite Ihre Rückerstattungsanfrage sofort.", "Ich entschuldige mich aufrichtig. Lassen Sie mich dies sofort eskalieren."],
+      IT: ["Capisco perfettamente la sua frustrazione. Sto elaborando la sua richiesta di rimborso ora.", "Mi scuso sinceramente. Lasciatemi scalare questo immediatamente al nostro team prioritario."],
+    };
+    const responses = pool[lang] || pool['EN'];
+    resp = responses[Math.floor(Math.random() * responses.length)];
+  }
 
   setWaveState('responding');
   statusText.textContent = `${activeAgent.name.toUpperCase()} IS RESPONDING...`;
@@ -773,23 +754,19 @@ function triggerBotResponse() {
   if (textEl) { textEl.textContent = ''; textEl.style.color = '#e2e2f0'; textEl.style.fontStyle = 'normal'; }
 
   showSpeakerIcon();
-  speakText(resp, 'EN'); // Always EN for the intro scenario
+  speakText(resp, isIntro ? 'EN' : lang);
 
-  // Typewriter over 8 seconds (longer sentence)
-  const introDuration = 8000;
-  typewriterOverDuration(textEl, resp, introDuration);
+  const duration = isIntro ? 8000 : 5000;
+  typewriterOverDuration(textEl, resp, duration);
 
-  // After 8 seconds, loop back to ambient + user input
   botResponseTimeout = setTimeout(() => {
     if (!sessionActive) return;
     hideSpeakerIcon();
-    window.speechSynthesis.cancel();
     setWaveState('ambient');
-    statusText.textContent = '● SESSION ACTIVE — speak now';
+    statusText.textContent = '● YOUR TURN — click mic to speak';
     statusText.style.color = '#FF007A';
     turnCount++;
-    startConversationLoop();
-  }, introDuration + 300);
+  }, duration + 300);
 }
 
 function typewriterOverDuration(el, text, durationMs) {
