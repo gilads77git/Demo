@@ -646,8 +646,16 @@ function showAiAnalyzing(show) {
 }
 
 function toggleSession() {
+  // Mark intro as played so first-click handler doesn't fire
+  introPlayed = true;
+  document.removeEventListener('click', handleFirstInteraction);
+
   if (!sessionActive) {
-    // START SESSION
+    // Unlock speech synthesis with a silent utterance (required by browsers)
+    const unlock = new SpeechSynthesisUtterance('');
+    unlock.volume = 0;
+    window.speechSynthesis.speak(unlock);
+
     sessionActive = true;
     setToggleLive();
     setWaveState('ambient');
@@ -655,7 +663,6 @@ function toggleSession() {
     statusText.style.color = '#FF007A';
     startConversationLoop();
   } else {
-    // STOP SESSION
     endSession();
   }
 }
@@ -1287,7 +1294,6 @@ function animateCloneWave() {
 }
 
 function triggerClone(btn) {
-  // If already cloned, just reset
   if (btn.dataset.cloned === 'true') {
     btn.dataset.cloned = '';
     btn.textContent = '⚡ CLONE MY VOICE';
@@ -1305,23 +1311,25 @@ function triggerClone(btn) {
   statusTextEl.textContent = '● RECORDING — say anything for 4 seconds...';
   buildCloneWave();
 
-  // Simulate animated waveform regardless of mic access
-  cloneAnimFrame = requestAnimationFrame(function loop() {
+  // Animate waveform with a stop flag
+  let cloneRunning = true;
+  (function loopCloneWave() {
+    if (!cloneRunning) return;
     const wave = document.getElementById('cloneWave');
     if (wave) wave.querySelectorAll('div').forEach(b => { b.style.height = (3 + Math.random() * 22) + 'px'; });
-    cloneAnimFrame = requestAnimationFrame(loop);
-  });
+    setTimeout(loopCloneWave, 80);
+  })();
 
   const finishClone = () => {
-    cancelAnimationFrame(cloneAnimFrame);
+    cloneRunning = false;
     cloneVoicePitch = 0.95 + Math.random() * 0.2;
     cloneVoiceRate  = 0.92 + Math.random() * 0.16;
     statusTextEl.textContent = '⚙ Analyzing voice signature...';
+    const wave = document.getElementById('cloneWave');
+    if (wave) wave.querySelectorAll('div').forEach(b => b.style.height = '3px');
     setTimeout(() => {
       statusTextEl.textContent = '✅ Voice cloned successfully!';
       statusTextEl.style.color = '#4ade80';
-      const wave = document.getElementById('cloneWave');
-      if (wave) wave.querySelectorAll('div').forEach(b => b.style.height = '3px');
       setTimeout(() => {
         statusDiv.style.display = 'none';
         document.getElementById('cloneLangPlayback').style.display = 'block';
@@ -1334,26 +1342,22 @@ function triggerClone(btn) {
     }, 1500);
   };
 
-  // Try real mic — if it fails, just simulate after 4 seconds anyway
+  // Try real mic silently — fallback to simulation if denied
   if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
     navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const source = audioCtx.createMediaStreamSource(stream);
-      cloneAnalyser = audioCtx.createAnalyser();
-      cloneAnalyser.fftSize = 64;
-      source.connect(cloneAnalyser);
-      cloneMediaRecorder = new MediaRecorder(stream);
-      cloneMediaRecorder.ondataavailable = () => {};
-      cloneMediaRecorder.onstop = () => {
-        stream.getTracks().forEach(t => t.stop());
-        finishClone();
-      };
-      cloneMediaRecorder.start();
-      setTimeout(() => { if (cloneMediaRecorder && cloneMediaRecorder.state === 'recording') cloneMediaRecorder.stop(); }, 4000);
-    }).catch(() => {
-      // Mic denied — simulate silently, no alert
-      setTimeout(finishClone, 4000);
-    });
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioCtx.createMediaStreamSource(stream);
+        cloneAnalyser = audioCtx.createAnalyser();
+        cloneAnalyser.fftSize = 64;
+        source.connect(cloneAnalyser);
+        cloneMediaRecorder = new MediaRecorder(stream);
+        cloneMediaRecorder.ondataavailable = () => {};
+        cloneMediaRecorder.onstop = () => { stream.getTracks().forEach(t => t.stop()); finishClone(); };
+        cloneMediaRecorder.start();
+        setTimeout(() => { if (cloneMediaRecorder && cloneMediaRecorder.state === 'recording') cloneMediaRecorder.stop(); }, 4000);
+      } catch(e) { setTimeout(finishClone, 4000); }
+    }).catch(() => { setTimeout(finishClone, 4000); });
   } else {
     setTimeout(finishClone, 4000);
   }
@@ -1423,12 +1427,11 @@ function playIntro() {
   speakText(introText, 'EN');
 }
 
-// Browsers require a user gesture for audio — we use a one-time click anywhere
-// but EXCLUDE the mic button so clicking mic doesn't trigger the intro
+// Browsers require a user gesture for audio — play intro on first interaction
+// but EXCLUDE the session toggle button (it handles its own logic)
 let introPlayed = false;
 function handleFirstInteraction(e) {
-  // Ignore clicks on mic button
-  if (e.target && (e.target.closest('#micBtn'))) return;
+  if (e.target && (e.target.closest('#micBtn') || e.target.closest('#sessionToggleBtn'))) return;
   if (introPlayed) return;
   introPlayed = true;
   document.removeEventListener('click', handleFirstInteraction);
