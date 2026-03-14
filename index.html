@@ -239,7 +239,7 @@ tailwind.config = {
         </div>
         <div class="flex items-center gap-2" style="background:#18181f;border:1px solid #1e1e2e;border-radius:10px;padding:8px 14px;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FF007A" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 14.14 14.14"/></svg>
-          <span id="activeLang" style="font-size:13px;font-weight:600;color:#FF007A;">ES</span>
+          <span id="activeLang" style="font-size:13px;font-weight:600;color:#FF007A;">EN</span>
           <span style="font-size:12px;color:#7c7c9a;">output</span>
         </div>
       </div>
@@ -385,8 +385,8 @@ tailwind.config = {
       <div style="background:#18181f;border:1px solid #1e1e2e;border-radius:16px;padding:18px;">
         <p style="font-size:11px;letter-spacing:0.12em;color:#9090b0;font-weight:600;font-size:11px;letter-spacing:0.1em;margin-bottom:14px;">LANGUAGE OUTPUT</p>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;" id="langGrid">
-          <div class="lang-chip" onclick="selectLang(this,'EN')" data-lang="EN">🇺🇸 EN</div>
-          <div class="lang-chip active" onclick="selectLang(this,'ES')" data-lang="ES">🇪🇸 ES</div>
+          <div class="lang-chip active" onclick="selectLang(this,'EN')" data-lang="EN">🇺🇸 EN</div>
+          <div class="lang-chip" onclick="selectLang(this,'ES')" data-lang="ES">🇪🇸 ES</div>
           <div class="lang-chip" onclick="selectLang(this,'FR')" data-lang="FR">🇫🇷 FR</div>
           <div class="lang-chip" onclick="selectLang(this,'JP')" data-lang="JP">🇯🇵 JP</div>
           <div class="lang-chip" onclick="selectLang(this,'DE')" data-lang="DE">🇩🇪 DE</div>
@@ -728,7 +728,6 @@ function triggerAnalyzing() {
 function triggerBotResponse() {
   if (!sessionActive) return;
 
-  const lang = getActiveLang();
   const resp = BOT_RESPONSE_SENTENCE;
 
   setWaveState('responding');
@@ -744,12 +743,13 @@ function triggerBotResponse() {
   if (textEl) { textEl.textContent = ''; textEl.style.color = '#e2e2f0'; textEl.style.fontStyle = 'normal'; }
 
   showSpeakerIcon();
-  speakText(resp, lang);
+  speakText(resp, 'EN'); // Always EN for the intro scenario
 
-  // Typewriter effect spread over exactly 5 seconds
-  typewriterOverDuration(textEl, resp, BOT_RESPONSE_DURATION_MS);
+  // Typewriter over 8 seconds (longer sentence)
+  const introDuration = 8000;
+  typewriterOverDuration(textEl, resp, introDuration);
 
-  // After 5 seconds, loop back to ambient + user input
+  // After 8 seconds, loop back to ambient + user input
   botResponseTimeout = setTimeout(() => {
     if (!sessionActive) return;
     hideSpeakerIcon();
@@ -758,9 +758,8 @@ function triggerBotResponse() {
     statusText.textContent = '● SESSION ACTIVE — speak now';
     statusText.style.color = '#FF007A';
     turnCount++;
-    // Start next loop after a brief pause
     startConversationLoop();
-  }, BOT_RESPONSE_DURATION_MS + 300);
+  }, introDuration + 300);
 }
 
 function typewriterOverDuration(el, text, durationMs) {
@@ -833,7 +832,7 @@ const botResponses = {
   ],
 };
 
-let selectedLang = 'ES';
+let selectedLang = 'EN';
 let responseIndex = 0;
 let activeAgent = { name: 'Maya', letter: 'M', gradient: 'linear-gradient(135deg,#f472b6,#c084fc)' };
 
@@ -879,35 +878,38 @@ function speakText(text, lang) {
 
   const trySpeak = () => {
     const voices = window.speechSynthesis.getVoices();
+    if (voices.length === 0) { setTimeout(trySpeak, 200); return; }
+
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang = locale;
     utter.rate = 1.0;
-    utter.pitch = 1.1;
     utter.volume = 1.0;
 
-    if (voices.length > 0) {
-      const langCode = locale.split('-')[0];
-      const femaleKeywords = ['female','woman','girl','samantha','victoria','karen','moira','fiona','veena','tessa','allison','ava','susan','zira','helena','paulina','amelie','alice','sara','anna','laura','lekha','sin-ji','mei-jia','kyoko','o-ren'];
-      const maleKeywords = ['male','man','daniel','thomas','alex','fred','jorge','diego','reed','luca','aaron','oliver','rishi','otoya','hans','stefan','pierre'];
-      const langVoices = voices.filter(v => v.lang === locale || v.lang.startsWith(langCode));
-      const isMaya = activeAgent.name === 'Maya';
-      let match;
-      if (isMaya) {
-        // Female voice for Maya
-        match = langVoices.find(v => femaleKeywords.some(k => v.name.toLowerCase().includes(k)))
-               || langVoices.find(v => !maleKeywords.some(k => v.name.toLowerCase().includes(k)))
-               || langVoices[0];
-      } else {
-        // Male voice for David, Sam, Kai
-        match = langVoices.find(v => maleKeywords.some(k => v.name.toLowerCase().includes(k)))
-               || langVoices.find(v => !femaleKeywords.some(k => v.name.toLowerCase().includes(k)))
-               || langVoices[0];
-      }
-      match = match || voices.find(v => v.lang.includes(langCode));
-      if (match) utter.voice = match;
-      // Adjust pitch: female slightly higher, male lower
-      utter.pitch = isMaya ? 1.2 : 0.85;
+    const langCode = locale.split('-')[0];
+    const femaleKeywords = ['female','woman','girl','samantha','victoria','karen','moira','fiona','veena','tessa','allison','ava','susan','zira','helena','paulina','amelie','alice','sara','anna','laura','lekha','sin-ji','mei-jia','kyoko','o-ren','google uk english female'];
+    const maleKeywords = ['male','man','daniel','thomas','alex','fred','jorge','diego','reed','luca','aaron','oliver','rishi','otoya','hans','stefan','pierre'];
+    const langVoices = voices.filter(v => v.lang === locale || v.lang.startsWith(langCode));
+    const allEnVoices = voices.filter(v => v.lang.startsWith('en'));
+    const isMaya = activeAgent.name === 'Maya';
+
+    let match;
+    if (isMaya) {
+      // Strictly female: keyword match first, then any voice NOT in male keywords
+      match = langVoices.find(v => femaleKeywords.some(k => v.name.toLowerCase().includes(k)))
+           || allEnVoices.find(v => femaleKeywords.some(k => v.name.toLowerCase().includes(k)))
+           || langVoices.find(v => !maleKeywords.some(k => v.name.toLowerCase().includes(k)))
+           || langVoices[0]
+           || voices[0];
+      utter.pitch = 1.25;
+    } else {
+      match = langVoices.find(v => maleKeywords.some(k => v.name.toLowerCase().includes(k)))
+           || langVoices.find(v => !femaleKeywords.some(k => v.name.toLowerCase().includes(k)))
+           || langVoices[0]
+           || voices[0];
+      utter.pitch = 0.85;
     }
+
+    if (match) utter.voice = match;
 
     utter.onstart = () => { setWaveState('responding'); };
     utter.onend = () => { setWaveState('idle'); hideSpeakerIcon(); };
@@ -915,7 +917,7 @@ function speakText(text, lang) {
     window.speechSynthesis.speak(utter);
   };
 
-  setTimeout(trySpeak, 300);
+  setTimeout(trySpeak, 150);
 }
 
 // ===== SPEECH RECOGNITION SETUP =====
