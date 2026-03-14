@@ -1064,6 +1064,15 @@ function startListening() {
   if (!SpeechRecognition) return;
   accumulatedText = '';
   userStoppedManually = false;
+
+  // Clear text box and set to user input state
+  const avatar = document.getElementById('chatSpeakerAvatar');
+  const nameEl = document.getElementById('chatSpeakerName');
+  const textEl = document.getElementById('chatSpeakerText');
+  if (avatar) { avatar.style.background = '#1e1e2e'; avatar.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f472b6" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>'; }
+  if (nameEl) nameEl.textContent = 'YOU · LIVE';
+  if (textEl) { textEl.textContent = ''; textEl.style.color = '#f472b6'; textEl.style.fontStyle = 'italic'; }
+
   try { recognition.start(); } catch(e) {}
 }
 
